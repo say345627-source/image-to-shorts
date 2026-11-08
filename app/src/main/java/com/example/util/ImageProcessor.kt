@@ -14,11 +14,17 @@ import android.graphics.RectF
 import android.media.ExifInterface
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.graphics.ImageDecoder
+import android.os.Build
+import android.util.Log
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 object ImageProcessor {
 
@@ -26,7 +32,7 @@ object ImageProcessor {
     private const val TARGET_HEIGHT = 1920
     private const val BLUR_DOWNSCALE_W = 135
     private const val BLUR_DOWNSCALE_H = 240
-    private const val MAX_DECODE_DIMENSION = 2160
+    private const val MAX_LONGEST_SIDE = 2048
 
     /**
      * Resolves display name from Uri or falls back to timestamp-based name.
@@ -56,73 +62,163 @@ object ImageProcessor {
     }
 
     /**
-     * Decodes the image at [uri] respecting EXIF orientation and downscaling
-     * if the original image exceeds [MAX_DECODE_DIMENSION] to avoid OOM.
+     * Decodes the image at [uri]:
+     * 1. Copies the picked Uri to app cache using contentResolver.openInputStream(uri).
+     * 2. Decodes using ImageDecoder.createSource(contentResolver, uri) on Android 9+
+     *    with fallback to ImageDecoder on the cached file, and BitmapFactory as final fallback.
+     * 3. Opens a fresh input stream for each attempt (never reuses a consumed stream).
+     * 4. Downsamples so the longest side is at most 2048 px.
+     * 5. Handles EXIF orientation.
+     * 6. Cleans up cache and includes exact exception text with fileName and mimeType.
      */
-    fun decodeAndOrient(context: Context, uri: Uri): Bitmap? {
+    fun decodeAndOrient(context: Context, uri: Uri, fileName: String, mimeType: String): Bitmap {
         val resolver = context.contentResolver
 
-        // 1. Read EXIF orientation
-        val orientation = runCatching {
-            resolver.openInputStream(uri)?.use { stream ->
-                ExifInterface(stream).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL
-                )
+        // 1. Copy uri stream to a temporary cache file to avoid broken/unseekable content streams
+        val cachedFile = File(context.cacheDir, "picked_${UUID.randomUUID().toString().take(8)}.tmp")
+        try {
+            resolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(cachedFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: throw IOException("contentResolver.openInputStream returned null")
+
+            if (cachedFile.length() == 0L) {
+                throw IOException("Copied 0 bytes from input stream (empty or inaccessible stream)")
             }
-        }.getOrNull() ?: ExifInterface.ORIENTATION_NORMAL
-
-        // 2. Read dimensions only
-        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, boundsOptions)
-        } ?: return null
-
-        val origW = boundsOptions.outWidth
-        val origH = boundsOptions.outHeight
-        if (origW <= 0 || origH <= 0) return null
-
-        // 3. Calculate inSampleSize so decoded image does not exceed MAX_DECODE_DIMENSION
-        var sampleSize = 1
-        while ((origW / sampleSize) > MAX_DECODE_DIMENSION || (origH / sampleSize) > MAX_DECODE_DIMENSION) {
-            sampleSize *= 2
+        } catch (e: Throwable) {
+            cachedFile.delete()
+            throw IllegalStateException("Failed to read image stream for '$fileName' (MIME: $mimeType): ${e.localizedMessage ?: e.message}", e)
         }
 
-        // 4. Decode actual bitmap
-        val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        val decoded = resolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, decodeOptions)
-        } ?: return null
+        var decodedBitmap: Bitmap? = null
+        var lastError: Throwable? = null
 
-        // 5. Apply EXIF transformation
-        val matrix = Matrix()
-        when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
-            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
-            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
-            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
-            ExifInterface.ORIENTATION_TRANSPOSE -> {
-                matrix.postRotate(90f)
-                matrix.postScale(-1f, 1f)
+        try {
+            // 2. Try ImageDecoder on Android 9+ (API 28+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                // First try ImageDecoder directly from contentResolver and uri
+                try {
+                    val source = ImageDecoder.createSource(resolver, uri)
+                    decodedBitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                        val width = info.size.width
+                        val height = info.size.height
+                        val longest = maxOf(width, height)
+                        if (longest > MAX_LONGEST_SIDE) {
+                            val scale = MAX_LONGEST_SIDE.toFloat() / longest
+                            val targetW = (width * scale).roundToInt().coerceAtLeast(1)
+                            val targetH = (height * scale).roundToInt().coerceAtLeast(1)
+                            decoder.setTargetSize(targetW, targetH)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    lastError = e
+                    Log.w("ImageProcessor", "ImageDecoder(contentResolver, uri) failed, trying cached file", e)
+                    // If uri source fails, try ImageDecoder on the cached file
+                    try {
+                        val fileSource = ImageDecoder.createSource(cachedFile)
+                        decodedBitmap = ImageDecoder.decodeBitmap(fileSource) { decoder, info, _ ->
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                            val width = info.size.width
+                            val height = info.size.height
+                            val longest = maxOf(width, height)
+                            if (longest > MAX_LONGEST_SIDE) {
+                                val scale = MAX_LONGEST_SIDE.toFloat() / longest
+                                val targetW = (width * scale).roundToInt().coerceAtLeast(1)
+                                val targetH = (height * scale).roundToInt().coerceAtLeast(1)
+                                decoder.setTargetSize(targetW, targetH)
+                            }
+                        }
+                    } catch (e2: Throwable) {
+                        lastError = e2
+                        Log.w("ImageProcessor", "ImageDecoder(cachedFile) failed, falling back to BitmapFactory", e2)
+                    }
+                }
             }
-            ExifInterface.ORIENTATION_TRANSVERSE -> {
-                matrix.postRotate(270f)
-                matrix.postScale(-1f, 1f)
-            }
-        }
 
-        return if (matrix.isIdentity) {
-            decoded
-        } else {
-            val oriented = Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
-            if (oriented != decoded) {
-                decoded.recycle()
+            // 3. Fallback to BitmapFactory with fresh input stream for each attempt
+            if (decodedBitmap == null) {
+                try {
+                    // Fresh stream 1: read dimensions only
+                    val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    FileInputStream(cachedFile).use { stream ->
+                        BitmapFactory.decodeStream(stream, null, boundsOptions)
+                    }
+                    val origW = boundsOptions.outWidth
+                    val origH = boundsOptions.outHeight
+                    if (origW <= 0 || origH <= 0) {
+                        throw IOException("BitmapFactory bounds decode returned non-positive dimensions: ${origW}x${origH}")
+                    }
+
+                    // Downsample so the longest side is at most 2048 px
+                    val longestSide = maxOf(origW, origH)
+                    var sampleSize = 1
+                    while ((longestSide / sampleSize) > MAX_LONGEST_SIDE) {
+                        sampleSize *= 2
+                    }
+
+                    val decodeOptions = BitmapFactory.Options().apply {
+                        inSampleSize = sampleSize
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+
+                    // Fresh stream 2: actual bitmap decode
+                    val rawBitmap = FileInputStream(cachedFile).use { stream ->
+                        BitmapFactory.decodeStream(stream, null, decodeOptions)
+                    } ?: throw IOException("BitmapFactory.decodeStream returned null from cached file")
+
+                    // Fresh stream 3: EXIF orientation
+                    val orientation = try {
+                        FileInputStream(cachedFile).use { stream ->
+                            ExifInterface(stream).getAttributeInt(
+                                ExifInterface.TAG_ORIENTATION,
+                                ExifInterface.ORIENTATION_NORMAL
+                            )
+                        }
+                    } catch (_: Throwable) {
+                        ExifInterface.ORIENTATION_NORMAL
+                    }
+
+                    val matrix = Matrix()
+                    when (orientation) {
+                        ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                        ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                        ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+                        ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+                        ExifInterface.ORIENTATION_TRANSPOSE -> {
+                            matrix.postRotate(90f)
+                            matrix.postScale(-1f, 1f)
+                        }
+                        ExifInterface.ORIENTATION_TRANSVERSE -> {
+                            matrix.postRotate(270f)
+                            matrix.postScale(-1f, 1f)
+                        }
+                    }
+
+                    decodedBitmap = if (matrix.isIdentity) {
+                        rawBitmap
+                    } else {
+                        val oriented = Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+                        if (oriented != rawBitmap) {
+                            rawBitmap.recycle()
+                        }
+                        oriented
+                    }
+                } catch (e: Throwable) {
+                    lastError = e
+                }
             }
-            oriented
+
+            if (decodedBitmap == null) {
+                val errText = lastError?.localizedMessage ?: lastError?.message ?: "Bitmap could not be decoded"
+                throw IllegalStateException("Failed to decode '$fileName' (MIME: $mimeType): $errText", lastError)
+            }
+
+            return decodedBitmap
+        } finally {
+            cachedFile.delete()
         }
     }
 

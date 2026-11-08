@@ -34,10 +34,15 @@ object VideoConverter {
      */
     suspend fun convertImageToShort(context: Context, imageUri: Uri): Result<Uri> = withContext(Dispatchers.Default) {
         val baseName = ImageProcessor.getDisplayName(context, imageUri)
+        val mimeType = context.contentResolver.getType(imageUri) ?: "unknown"
 
         // 1. Decode & orient image (downsampling if huge to avoid OOM)
-        val sourceBitmap = ImageProcessor.decodeAndOrient(context, imageUri)
-            ?: return@withContext Result.failure(IllegalArgumentException("Could not decode image: $baseName"))
+        val sourceBitmap = try {
+            ImageProcessor.decodeAndOrient(context, imageUri, baseName, mimeType)
+        } catch (e: Throwable) {
+            val errText = e.localizedMessage ?: e.message ?: "Unknown decoding error"
+            return@withContext Result.failure(IllegalStateException("Failed to decode '$baseName' (MIME: $mimeType): $errText", e))
+        }
 
         // 2. Generate composite 1080x1920 frame with blurred background
         val compositeFrameFile = try {
@@ -67,7 +72,9 @@ object VideoConverter {
 
         if (encodeResult.isFailure) {
             tempOutputFile.delete()
-            return@withContext Result.failure(encodeResult.exceptionOrNull() ?: Exception("Unknown encoding error"))
+            val ex = encodeResult.exceptionOrNull()
+            val errText = ex?.localizedMessage ?: ex?.message ?: "Encoding error"
+            return@withContext Result.failure(IllegalStateException("Failed to encode '$baseName.mp4' (MIME: $mimeType): $errText", ex))
         }
 
         // 5. Save to MediaStore under Movies/ImageToShorts
@@ -77,7 +84,8 @@ object VideoConverter {
             Result.success(savedUri)
         } catch (e: Exception) {
             tempOutputFile.delete()
-            Result.failure(e)
+            val errText = e.localizedMessage ?: e.message ?: "MediaStore save error"
+            Result.failure(IllegalStateException("Failed to save '$baseName.mp4' (MIME: video/mp4): $errText", e))
         }
     }
 
