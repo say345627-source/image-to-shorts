@@ -16,6 +16,9 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import android.media.MediaScannerConnection
+import android.os.Environment
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -163,12 +166,21 @@ object VideoConverter {
     private fun saveToMediaStore(context: Context, sourceVideoFile: File, baseName: String): Uri {
         val resolver = context.contentResolver
         val fileName = "$baseName.mp4"
+        val now = System.currentTimeMillis()
 
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.TITLE, baseName)
+            put(MediaStore.Video.Media.DATE_ADDED, now / 1000)
+            put(MediaStore.Video.Media.DATE_MODIFIED, now / 1000)
+            put(MediaStore.Video.Media.WIDTH, 1080)
+            put(MediaStore.Video.Media.HEIGHT, 1920)
+            put(MediaStore.Video.Media.DURATION, 3000L)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ImageToShorts")
+                // DCIM is the standard Android Digital Camera/Gallery directory where all photos/videos are shown in Gallery
+                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/ImageToShorts")
+                put(MediaStore.Video.Media.DATE_TAKEN, now)
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
         }
@@ -187,6 +199,30 @@ object VideoConverter {
             values.clear()
             values.put(MediaStore.Video.Media.IS_PENDING, 0)
             resolver.update(videoUri, values, null, null)
+        }
+
+        // Notify MediaScanner to ensure instant visibility and thumbnail generation in all Gallery apps
+        try {
+            val projection = arrayOf(MediaStore.Video.Media.DATA)
+            resolver.query(videoUri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val dataIndex = cursor.getColumnIndex(MediaStore.Video.Media.DATA)
+                    if (dataIndex != -1) {
+                        val filePath = cursor.getString(dataIndex)
+                        if (!filePath.isNullOrBlank()) {
+                            MediaScannerConnection.scanFile(
+                                context,
+                                arrayOf(filePath),
+                                arrayOf("video/mp4")
+                            ) { path, uri ->
+                                Log.d("VideoConverter", "Gallery scanned video: $path -> $uri")
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("VideoConverter", "Could not trigger MediaScanner scan", e)
         }
 
         return videoUri

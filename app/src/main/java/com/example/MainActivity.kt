@@ -211,18 +211,36 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                     )
                                 },
                                 onOpenGallery = {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video/*")
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (_: Exception) {
+                                    var launched = false
+                                    if (state.lastSavedUri != null) {
                                         try {
-                                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                                type = "video/*"
+                                            val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(state.lastSavedUri, "video/mp4")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                                             }
-                                            context.startActivity(intent)
+                                            context.startActivity(viewIntent)
+                                            launched = true
+                                        } catch (_: Exception) {}
+                                    }
+                                    if (!launched) {
+                                        try {
+                                            val galleryIntent = Intent.makeMainSelectorActivity(
+                                                Intent.ACTION_MAIN,
+                                                Intent.CATEGORY_APP_GALLERY
+                                            ).apply {
+                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(galleryIntent)
+                                            launched = true
+                                        } catch (_: Exception) {}
+                                    }
+                                    if (!launched) {
+                                        try {
+                                            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video/*")
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            }
+                                            context.startActivity(fallbackIntent)
                                         } catch (_: Exception) {}
                                     }
                                 }

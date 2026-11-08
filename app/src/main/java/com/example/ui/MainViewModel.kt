@@ -31,7 +31,8 @@ sealed interface UiState {
     data class Done(
         val savedCount: Int,
         val failedCount: Int,
-        val totalCount: Int
+        val totalCount: Int,
+        val lastSavedUri: Uri? = null
     ) : UiState
 }
 
@@ -52,6 +53,7 @@ class MainViewModel : ViewModel() {
             val total = uris.size
             var savedCount = 0
             var failedCount = 0
+            var lastSavedUri: Uri? = null
 
             for (index in uris.indices) {
                 val current = index + 1
@@ -77,6 +79,7 @@ class MainViewModel : ViewModel() {
                 val result = VideoConverter.convertImageToShort(appContext, uri)
                 if (result.isSuccess) {
                     savedCount++
+                    lastSavedUri = result.getOrNull()
                     Log.d("MainViewModel", "Successfully converted $fileName (${result.getOrNull()})")
                 } else {
                     failedCount++
@@ -91,7 +94,8 @@ class MainViewModel : ViewModel() {
             _uiState.value = UiState.Done(
                 savedCount = savedCount,
                 failedCount = failedCount,
-                totalCount = total
+                totalCount = total,
+                lastSavedUri = lastSavedUri
             )
         }
     }
