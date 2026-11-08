@@ -1,0 +1,6 @@
+{
+  "name": "Image to Shorts",
+  "description": "Convert individual images into 9:16 vertical short videos with blurred background and silent audio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
