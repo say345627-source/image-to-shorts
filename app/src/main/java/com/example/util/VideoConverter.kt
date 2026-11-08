@@ -178,8 +178,8 @@ object VideoConverter {
             put(MediaStore.Video.Media.HEIGHT, 1920)
             put(MediaStore.Video.Media.DURATION, 3000L)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // DCIM is the standard Android Digital Camera/Gallery directory where all photos/videos are shown in Gallery
-                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/ImageToShorts")
+                // DCIM/Camera is the primary camera roll directory displayed on the main "الصور" (Photos) tab in MIUI Gallery and Google Photos
+                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/Camera")
                 put(MediaStore.Video.Media.DATE_TAKEN, now)
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
@@ -224,6 +224,11 @@ object VideoConverter {
         } catch (e: Exception) {
             Log.w("VideoConverter", "Could not trigger MediaScanner scan", e)
         }
+
+        try {
+            val scanIntent = android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, videoUri)
+            context.sendBroadcast(scanIntent)
+        } catch (_: Exception) {}
 
         return videoUri
     }

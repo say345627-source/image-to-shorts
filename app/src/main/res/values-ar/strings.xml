@@ -12,11 +12,11 @@
     <string name="notification_channel_desc">عرض تقدم تحويل الصور إلى فيديوهات قصيرة</string>
     <string name="notification_title">جارٍ التحويل إلى شورتس</string>
     <string name="notification_done_title">اكتمل التحويل</string>
-    <string name="notification_done_text">تم حفظ %1$d فيديوهات في المعرض مباشرة</string>
+    <string name="notification_done_text">تم حفظ %1$d فيديوهات مباشرة في تبويب الصور بالمعرض</string>
     <string name="btn_open_gallery">فتح في المعرض</string>
     <string name="info_specs_title">مواصفات الفيديو الناتج</string>
     <string name="info_specs_detail">1080×1920 (9:16) • 30 إطار/ثانية • 3 ثوانٍ • H.264 • صوت AAC صامت</string>
-    <string name="info_storage_location">تم الحفظ في المعرض (DCIM/ImageToShorts)</string>
+    <string name="info_storage_location">محفوظة في تبويب الصور بالمعرض • DCIM/Camera</string>
     <string name="source_image">الصورة الأصلية</string>
     <string name="processing_card_title">التحويل الحالي</string>
     <string name="cancel">إلغاء</string>
