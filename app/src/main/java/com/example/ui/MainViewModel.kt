@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+data class ConversionError(
+    val fileName: String,
+    val message: String
+)
+
 sealed interface UiState {
     data object Idle : UiState
 
@@ -25,14 +30,16 @@ sealed interface UiState {
         val currentFileName: String,
         val currentThumbnailUri: Uri,
         val savedCount: Int,
-        val failedCount: Int
+        val failedCount: Int,
+        val lastErrorMessage: String? = null
     ) : UiState
 
     data class Done(
         val savedCount: Int,
         val failedCount: Int,
         val totalCount: Int,
-        val lastSavedUri: Uri? = null
+        val lastSavedUri: Uri? = null,
+        val errors: List<ConversionError> = emptyList()
     ) : UiState
 }
 
@@ -54,6 +61,7 @@ class MainViewModel : ViewModel() {
             var savedCount = 0
             var failedCount = 0
             var lastSavedUri: Uri? = null
+            val errorsList = mutableListOf<ConversionError>()
 
             for (index in uris.indices) {
                 val current = index + 1
@@ -66,7 +74,8 @@ class MainViewModel : ViewModel() {
                     currentFileName = fileName,
                     currentThumbnailUri = uri,
                     savedCount = savedCount,
-                    failedCount = failedCount
+                    failedCount = failedCount,
+                    lastErrorMessage = errorsList.lastOrNull()?.message
                 )
 
                 NotificationHelper.showProgressNotification(
@@ -83,9 +92,12 @@ class MainViewModel : ViewModel() {
                     Log.d("MainViewModel", "Successfully converted $fileName (${result.getOrNull()})")
                 } else {
                     failedCount++
-                    Log.e("MainViewModel", "Failed to convert $fileName", result.exceptionOrNull())
-                    // Continue with the rest as requested:
-                    // "If one image fails, skip it and continue with the rest."
+                    val ex = result.exceptionOrNull()
+                    val errorMsg = ex?.localizedMessage
+                        ?: ex?.message
+                        ?: "Unknown error occurred while processing $fileName"
+                    errorsList.add(ConversionError(fileName, errorMsg))
+                    Log.e("MainViewModel", "Failed to convert $fileName: $errorMsg", ex)
                 }
             }
 
@@ -95,7 +107,8 @@ class MainViewModel : ViewModel() {
                 savedCount = savedCount,
                 failedCount = failedCount,
                 totalCount = total,
-                lastSavedUri = lastSavedUri
+                lastSavedUri = lastSavedUri,
+                errors = errorsList
             )
         }
     }

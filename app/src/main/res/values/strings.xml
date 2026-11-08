@@ -6,18 +6,19 @@
     <string name="status_idle">Select one or more images to begin</string>
     <string name="status_progress_count">%1$d of %2$d</string>
     <string name="status_processing_named">Converting %1$s…</string>
-    <string name="status_done">Done: %1$d videos saved</string>
-    <string name="status_done_with_failures">Done: %1$d saved, %2$d skipped</string>
+    <string name="status_done">Done: %1$d videos saved to the gallery</string>
+    <string name="status_done_with_failures">Done: %1$d videos saved to the gallery (%2$d failed)</string>
     <string name="notification_channel_name">Video Conversion</string>
     <string name="notification_channel_desc">Shows progress of converting images into short videos</string>
     <string name="notification_title">Converting to Shorts</string>
     <string name="notification_done_title">Conversion Finished</string>
-    <string name="notification_done_text">Saved %1$d videos to your Gallery (Photos tab)</string>
+    <string name="notification_done_text">Done: %1$d videos saved to the gallery</string>
     <string name="btn_open_gallery">Open in Gallery</string>
     <string name="info_specs_title">Video Output Specs</string>
     <string name="info_specs_detail">1080×1920 (9:16) • 30 FPS • 3 Seconds • H.264 • Silent AAC</string>
-    <string name="info_storage_location">Saved to Gallery Photos • DCIM/Camera</string>
+    <string name="info_storage_location">Saved to: Movies/ImageToShorts</string>
     <string name="source_image">Source image</string>
     <string name="processing_card_title">Active Conversion</string>
+    <string name="error_details_title">Error details</string>
     <string name="cancel">Cancel</string>
 </resources>

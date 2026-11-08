@@ -6,18 +6,19 @@
     <string name="status_idle">اختر صورة أو أكثر للبدء في التحويل</string>
     <string name="status_progress_count">%1$d من %2$d</string>
     <string name="status_processing_named">جارٍ تحويل %1$s…</string>
-    <string name="status_done">تم: تم حفظ %1$d فيديوهات</string>
-    <string name="status_done_with_failures">تم: تم حفظ %1$d، وتخطي %2$d</string>
+    <string name="status_done">تم: تم حفظ %1$d فيديوهات في المعرض</string>
+    <string name="status_done_with_failures">تم: تم حفظ %1$d فيديوهات في المعرض (فشل %2$d)</string>
     <string name="notification_channel_name">تحويل الفيديو</string>
     <string name="notification_channel_desc">عرض تقدم تحويل الصور إلى فيديوهات قصيرة</string>
     <string name="notification_title">جارٍ التحويل إلى شورتس</string>
     <string name="notification_done_title">اكتمل التحويل</string>
-    <string name="notification_done_text">تم حفظ %1$d فيديوهات مباشرة في تبويب الصور بالمعرض</string>
+    <string name="notification_done_text">تم: تم حفظ %1$d فيديوهات في المعرض</string>
     <string name="btn_open_gallery">فتح في المعرض</string>
     <string name="info_specs_title">مواصفات الفيديو الناتج</string>
     <string name="info_specs_detail">1080×1920 (9:16) • 30 إطار/ثانية • 3 ثوانٍ • H.264 • صوت AAC صامت</string>
-    <string name="info_storage_location">محفوظة في تبويب الصور بالمعرض • DCIM/Camera</string>
+    <string name="info_storage_location">مكان الحفظ: Movies/ImageToShorts</string>
     <string name="source_image">الصورة الأصلية</string>
     <string name="processing_card_title">التحويل الحالي</string>
+    <string name="error_details_title">تفاصيل الأخطاء</string>
     <string name="cancel">إلغاء</string>
 </resources>

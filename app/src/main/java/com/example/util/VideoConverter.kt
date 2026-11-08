@@ -178,27 +178,31 @@ object VideoConverter {
             put(MediaStore.Video.Media.HEIGHT, 1920)
             put(MediaStore.Video.Media.DURATION, 3000L)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // DCIM/Camera is the primary camera roll directory displayed on the main "الصور" (Photos) tab in MIUI Gallery and Google Photos
-                put(MediaStore.Video.Media.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/Camera")
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ImageToShorts")
                 put(MediaStore.Video.Media.DATE_TAKEN, now)
                 put(MediaStore.Video.Media.IS_PENDING, 1)
             }
         }
 
         val videoUri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw IllegalStateException("Failed to create MediaStore entry for $fileName")
+            ?: throw IllegalStateException("MediaStore insert returned null for '$fileName' (storage may be full or permission denied)")
 
-        resolver.openOutputStream(videoUri)?.use { output ->
-            sourceVideoFile.inputStream().use { input ->
-                input.copyTo(output)
+        try {
+            resolver.openOutputStream(videoUri)?.use { output ->
+                sourceVideoFile.inputStream().use { input ->
+                    input.copyTo(output)
+                }
+                output.flush()
+            } ?: throw IllegalStateException("Cannot open output stream for '$videoUri'")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                values.clear()
+                values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                resolver.update(videoUri, values, null, null)
             }
-            output.flush()
-        } ?: throw IllegalStateException("Failed to write video data to MediaStore")
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            values.clear()
-            values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            resolver.update(videoUri, values, null, null)
+        } catch (e: Exception) {
+            try { resolver.delete(videoUri, null, null) } catch (_: Exception) {}
+            throw IllegalStateException("Error saving '$fileName' to gallery: ${e.localizedMessage ?: e.message}", e)
         }
 
         // Notify MediaScanner to ensure instant visibility and thumbnail generation in all Gallery apps
